@@ -1,7 +1,5 @@
 
 
-import math
-from decimal import Decimal
 from natsort import natsorted
 from sqlalchemy import (
     MetaData,
@@ -12,9 +10,6 @@ from sqlalchemy import (
     func,
     Float,
 )
-from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError
-import pandas as pd
-import numpy as np
 import sys
 import os
 import traceback
@@ -24,7 +19,7 @@ from dotenv import load_dotenv
 
 from import_utils import *
 from model_import_actions import model_import_actions
-
+from publish_group import publish_group
 
 load_dotenv()
 
@@ -220,23 +215,21 @@ def import_file(file, file_info, action):
     
     table = get_table(model)
     
-#    cache_group = file_info('cache_group')
-#    print(f"cache group is {file_info['cache_group']}")
 
-    successCount = 0
-    failCount = 0
-    duplicateCount = 0
-    missingRefCount = 0
-    insertCount = 0
-    updatedCount = 0
-    successful_chunks = 0
-    fail_chunks = 0
+    # break up file into chunks
+    # for each chunk, 
+    #   make the existing map and depends on maps
+    #   make the insert list and update list
+    # pass to publish)group
         
     action_types = action.get("tsv_types" ,{})
 
     df = readTSV(file, file_info, dtype=action_types)
     
-
+    missingRefCount = 0
+    duplicateCount = 0
+    successCount = 0
+    
     data_insert_list = []
     data_update_list = []
     for _, row in df.iterrows():
@@ -290,23 +283,6 @@ def import_file(file, file_info, action):
                     skip = True
         if skip:
             continue
-#        # this block replaces None with empty string for string columns (good for django)
-#        for col in data:
-#            if (
-#                col in table.columns
-#                and isinstance(table.columns[col].type, String)
-#                and data[col] is None
-#            ):
-#                data[col] = ""
-#        # this block fills missing columns with None or empty string, depending on the column type
-#        for table_col in table.columns:
-#            if table_col.name not in data:
-#                if isinstance(table_col.type, String):
-#                    data[table_col.name] = ""
-#                    log_data_issue("filled missing col " + table_col.name + " with empty string", name)
-#                else:
-#                    data[table_col.name] = None
-#                    log_data_issue("filled missing col " + table_col.name + " with None", name)
 
         if record_map_key is None:
             print(f"record_map_key is None for {model} {data}")
@@ -328,121 +304,17 @@ def import_file(file, file_info, action):
 
     # dispose of df to save ram
     del df
-    with engine.connect() as connection:
-
-        def rowOperation(row, updating=False):
-            nonlocal successCount, failCount, duplicateCount, insertCount, updatedCount, successful_chunks, fail_chunks
-            
-            did_succeed = False
-            try:
-                if updating:
-                    
-                    id = row["id"]
-                    del row["id"]
-                    connection.execute(
-                        table.update().where(table.c.id == id), row
-                    )
-                    connection.commit()
-                    successCount += 1
-                    updatedCount += 1
-                    did_succeed = True
-                else:
-                    connection.execute(table.insert(), row)
-                    connection.commit()
-                    successCount += 1
-                    insertCount += 1
-                    did_succeed = True
-
-            except DataError as e:
-                log_data_issue(e, model)
-                failCount += 1
-            except IntegrityError as e:
-                msg = str(e)
-                if "Duplicate" in msg or "ORA-00001" in msg:
-                    duplicateCount += 1
-                    successCount += 1
-                    log_data_issue(e, model)
-                else:
-                    failCount += 1
-                    log_data_issue(e, model)
-            except Exception as e:
-
-                log_data_issue(e, model)
-                failCount += 1
-            
-            if not did_succeed:
-                connection.rollback()
-                
-        def chunkOperation(chunk, updating=False):
-            nonlocal successCount, failCount, duplicateCount, insertCount, updatedCount, successful_chunks, fail_chunks
-            if dry_run:
-                successCount += len(chunk)
-                return
-            if updating:
-                
-                existing_map = {}
-                for sub_chunk in chunks(chunk, 1000):
-                    ids = [row["id"] for row in sub_chunk]
-                    existing_full_records = connection.execute(select(table).where(table.c.id.in_(ids))).fetchall()
-                    existing_map.update({row.id: row._mapping for row in existing_full_records})
-#                existing_map = {row.id: row._mapping for row in existing_full_records}
-                
-                filtered_update_list = []
-                
-                for row in chunk:
-                    existing_row = existing_map.get(row["id"])
-                    if existing_row is None:
-                        log_data_issue(f"updating, but row with id {row['id']} was removed??", model)
-                        failCount += 1
-                        continue
-                    else:
-                        def is_equal(a, b):
-                            if a == b:
-                                return True
-                            if isinstance(a, (float, Decimal)) and isinstance(b, (float, Decimal)):
-                                return math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9)
-                            return False
-                        
-                        if any(not is_equal(existing_row.get(col), row[col]) for col in existing_row.keys()):
-                            filtered_update_list.append(row)
-                        else:
-                            successCount += 1
-                            
-                for row in filtered_update_list:
-                    rowOperation(row, updating)
-            else:
-                try: 
-                    connection.execute(table.insert(), chunk)
-                    # commit
-                    connection.commit()
-                    # chunk worked
-                    successful_chunks += 1
-                    successCount += len(chunk)
-                    insertCount += len(chunk)
-                except Exception as e:
-                    #                print(e)
-                    connection.rollback()
-                    fail_chunks += 1
-                    for row in chunk:
-                        rowOperation(row, updating)
-                        
-        for chunk in chunks(data_insert_list, chunk_size):
-            chunkOperation(chunk)
-        for chunk in chunks(data_update_list, chunk_size):
-            chunkOperation(chunk, updating=True)
-        
+    
     log_output(f"    {str(datetime.now() - file_now)}")
-    return {
-        "success": successCount,
-        "fail": failCount,
-        "missingRef": missingRefCount,
-        "duplicate": duplicateCount,
-        "inserted": insertCount,
-        "updated": updatedCount,
-        "successful_chunks": successful_chunks,
-        "fail_chunks": fail_chunks,
-        "rowcount": file_info["total_rows"],
-    }
+    
+    counts = publish_group(data_insert_list, data_update_list, engine, model, table)
+    
+    counts["missingRef"] = missingRefCount
+    counts["duplicate"] = counts["duplicate"] + duplicateCount
+    counts["success"] = counts["success"] + successCount
+    counts["rowcount"] = file_info["total_rows"]
+    
+    return counts
 
 
 def cleanup(sig, frame):
