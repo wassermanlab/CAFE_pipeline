@@ -58,7 +58,7 @@ engine = None
 metadata = MetaData()
 
 depends_on_maps = {}
-transcripts_existing_map = {}
+transcripts_map = {} # special persistance, because frequently depended on
 
 def separate_cache_by_chromosome(action):
     return action["name"] not in ["transcripts","genes", "severities"]
@@ -66,7 +66,7 @@ def separate_cache_by_chromosome(action):
 #@profile
 def populate_maps(model_action, group_label="all", variant_prefix=None, variant_suffix=None):
     print("populating maps", group_label)
-    global depends_on_maps, transcripts_existing_map
+    global depends_on_maps, transcripts_map
     model = model_action["name"]
     group_existing_map = {}
     
@@ -96,12 +96,6 @@ def populate_maps(model_action, group_label="all", variant_prefix=None, variant_
                     statement = select(*cols).join(variants, table.c.variant == variants.c.id).where(variants.c.assembly == set_var_assembly)
                     statement = statement.where(variants.c.variant_id.startswith(variant_prefix))
                     #                    statement =  variant_prefix(statement, variants)
-                elif modelName == "transcripts" and model != "transcripts":
-                    if transcripts_existing_map:
-                        log_output("using transcripts map")
-                        return transcripts_existing_map
-                    cols.append(table.c["assembly"])
-                    statement = select(*cols).where(table.c.assembly == set_var_assembly)
                 elif modelName == "variants":
                     variants = table
                     cols.append(table.c["assembly"])
@@ -170,21 +164,22 @@ def populate_maps(model_action, group_label="all", variant_prefix=None, variant_
         group_existing_map = actual_existing_map #{reversed.get(k): v for k, v in tentative_existing_map.items() if reversed.get(k) is not None }
         
     else:
- #       if model == "snvs":
-#            print("")
-        referenced_models = model_action.get("fk_map").values()
-        group_existing_map = make_existing_map(model)
-        for m in referenced_models:
 
-            depends_on_maps[m] = make_existing_map(m)
+        group_existing_map = make_existing_map(model)
+        
+        referenced_models = model_action.get("fk_map").values()
+        for m in referenced_models:
+            if m == "transcripts" and not transcripts_map:
+                transcripts_map = make_existing_map("transcripts")
+                depends_on_maps["transcripts"] = transcripts_map
+                log_output("just made the transcripts map")
+            else:
+                depends_on_maps[m] = make_existing_map(m)
+                
     for key in depends_on_maps.keys():
         log_output(f"    depends-on map {key} {group_label} has: {len(depends_on_maps[key])} items")
     log_output(f"    existing map {model} {group_label} has: {len(group_existing_map)} items")
     
-    if model == "transcripts":
-        log_output("adding to the existing transcripts map")
-        
-        transcripts_existing_map.update( group_existing_map ) # save for later to save time
     return group_existing_map
 
 
@@ -208,8 +203,11 @@ def append_to_map(modelName, key, value):
 
 
 def persist_and_unload_maps():
-    global depends_on_maps
+    global depends_on_maps, transcripts_map
+    if "transcripts" in depends_on_maps and len(depends_on_maps["transcripts"]) > 0:
+        transcripts_map = depends_on_maps["transcripts"]
     depends_on_maps.clear()
+    depends_on_maps["transcripts"] = transcripts_map
 
 
 def get_table(model):
@@ -391,13 +389,14 @@ def import_file(file, file_info, action):
 
 
 def cleanup(sig, frame):
-    global engine, depends_on_maps, metadata
+    global engine, depends_on_maps, transcripts_map, metadata
 #    print("terminating, cleaning up ...")
     log_output("terminating, cleaning up ...")
     persist_and_unload_maps()
     engine.dispose()
     # garbage collect
     del depends_on_maps
+    del transcripts_map
     del metadata
 #    print("done")
     log_output("done")
