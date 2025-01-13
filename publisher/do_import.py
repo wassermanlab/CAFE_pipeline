@@ -58,22 +58,21 @@ engine = None
 metadata = MetaData()
 
 depends_on_maps = {}
-current_model_existing_map = {}
-
-last_chromosome = None
-current_chromosome = None
+transcripts_existing_map = {}
 
 def separate_cache_by_chromosome(action):
-    return action["name"] in ["variants","variants_transcripts", "variants_annotations", "variants_consequences"]
+    return action["name"] not in ["transcripts","genes", "severities"]
 
 
-def populate_maps(action, chromosome=None):
-    global current_model_existing_map, depends_on_maps
-    model = action["name"]
+def populate_maps(model_action, group_label="all", variant_prefix=None, variant_suffix=None):
+    print("populating maps", group_label)
+    global depends_on_maps, transcripts_existing_map
+    model = model_action["name"]
+    group_existing_map = {}
     
-    def make_existing_map(modelName, chromosome=None):
+    def make_existing_map(modelName):
         table = get_table(modelName)
-        model_action = model_import_actions[modelName]
+        depended_model_action = model_import_actions[modelName]
 
         with engine.connect() as connection:
             if (modelName == "variants_transcripts"):
@@ -83,27 +82,32 @@ def populate_maps(action, chromosome=None):
                     table.c["id"],
                     variants.c["variant_id", "assembly"], 
                     transcripts.c["transcript_id"]
-                ).join(variants, table.c.variant == variants.c.id).join(transcripts, table.c.transcript == transcripts.c.id).where(variants.c.assembly == set_var_assembly)
-                if chromosome is not None:
-                    statement = statement.where(variants.c.variant_id.startswith(f"{chromosome}_"))
+                ).join(variants, table.c.variant == variants.c.id
+                ).join(transcripts, table.c.transcript == transcripts.c.id
+                ).where(variants.c.assembly == set_var_assembly)
+                statement = statement.where(variants.c.variant_id.startswith(variant_prefix))
                 
             else:
-                cols = [table.c[col] for col in ["id"] + model_action["pk_lookup_col"] ]
+                cols = [table.c[col] for col in ["id"] + depended_model_action["pk_lookup_col"] ]
                 
-                if "variant" in model_action["fk_map"]:
+                if "variant" in depended_model_action["fk_map"]:
                     variants = get_table("variants")
                     cols.append(variants.c["variant_id", "assembly"])
                     statement = select(*cols).join(variants, table.c.variant == variants.c.id).where(variants.c.assembly == set_var_assembly)
-                    if chromosome is not None:
-                        statement = statement.where(variants.c.variant_id.startswith(f"{chromosome}_"))
-                elif modelName == "transcripts":
+                    statement = statement.where(variants.c.variant_id.startswith(variant_prefix))
+                    #                    statement =  variant_prefix(statement, variants)
+                elif modelName == "transcripts" and model != "transcripts":
+                    if transcripts_existing_map:
+                        log_output("using transcripts map")
+                        return transcripts_existing_map
                     cols.append(table.c["assembly"])
                     statement = select(*cols).where(table.c.assembly == set_var_assembly)
                 elif modelName == "variants":
+                    variants = table
                     cols.append(table.c["assembly"])
-                    statement = select(*cols).where(table.c.assembly == set_var_assembly)
-                    if chromosome is not None:
-                        statement = statement.where(table.c.variant_id.startswith(f"{chromosome}_"))
+                    statement = select(*cols).where(variants.c.assembly == set_var_assembly)
+                    statement = statement.where(variants.c.variant_id.startswith(variant_prefix))
+#                    statement =  variant_prefix(statement, table, group_label)
                 elif modelName == "variants_annotations":
                     variants = get_table("variants")
                     variants_transcripts = get_table("variants_transcripts")
@@ -113,8 +117,9 @@ def populate_maps(action, chromosome=None):
                             variants, variants.c.id == variants_transcripts.c.variant
                         ).where(
                             variants.c.assembly == set_var_assembly
-                        ).where(
-                            variants.c.variant_id.startswith(f"{chromosome}_"))
+                        )
+                    statement = statement.where(variants.c.variant_id.startswith(variant_prefix))                        
+#                    statement =  variant_prefix(statement, variants)
                 elif modelName == "variants_consequences":
                     variants = get_table("variants")
                     variants_transcripts = get_table("variants_transcripts")
@@ -124,31 +129,36 @@ def populate_maps(action, chromosome=None):
                             variants, variants.c.id == variants_transcripts.c.variant
                         ).where(
                             variants.c.assembly == set_var_assembly
-                        ).where(
-                            variants.c.variant_id.startswith(f"{chromosome}_"))
+                        )
+                        
+                    statement = statement.where(variants.c.variant_id.startswith(variant_prefix))
+#                    statement = variant_prefix(statement, variants)
+                elif modelName == "transcripts":
+                    statement = select(*cols).where(table.c.assembly == set_var_assembly)
                 else:
                     statement = select(*cols)
-                    
-            result = connection.execute(statement)
+            if variant_suffix is not None and modelName != "transcripts":
+                statement = statement.where(variants.c.variant_id.endswith(variant_suffix))
+#            if isinstance(variant_prefix, str):
+#                statement = statement.where(get_table("variants").c.variant_id.startswith(variant_prefix))
             existing = {
-                model_action["map_key_expression"](row): row.id for row in result
+                depended_model_action["map_key_expression"](row): row.id for row in connection.execute(statement)
             }
             num_in_existing_map = len(existing.keys())
-            log_output(f"    cached {str(num_in_existing_map)} {modelName} (chr:{chromosome})")
             return existing
         
     if model == "variants_annotations": # unique variant_transcript per annotation
-        depends_on_maps["variants_transcripts"] = make_existing_map("variants_transcripts", chromosome)
+        depends_on_maps["variants_transcripts"] = make_existing_map("variants_transcripts")
         reversed = {v: k for k, v in depends_on_maps["variants_transcripts"].items()}
-        tenative_existing_map = make_existing_map(model, chromosome)
-        current_model_existing_map = {reversed.get(k): v for k, v in tenative_existing_map.items() if reversed.get(k) is not None }
+        tenative_existing_map = make_existing_map(model)
+        group_existing_map = {reversed.get(k): v for k, v in tenative_existing_map.items() if reversed.get(k) is not None }
         del reversed
         del tenative_existing_map
         
     elif model == "variants_consequences": # non unique variant_transcripts per consequence
-        depends_on_maps["variants_transcripts"] = make_existing_map("variants_transcripts", chromosome)
+        depends_on_maps["variants_transcripts"] = make_existing_map("variants_transcripts")
         reversed = {v: k for k, v in depends_on_maps["variants_transcripts"].items()}
-        tentative_existing_map = make_existing_map(model, chromosome)
+        tentative_existing_map = make_existing_map(model)
         actual_existing_map = {}
         for vt_id_tuple, id in tentative_existing_map.items():
             vt_id, descriminator = vt_id_tuple
@@ -157,17 +167,25 @@ def populate_maps(action, chromosome=None):
                 actual_existing_map[(variant_id, transcript_id, descriminator)] = id
         del reversed
         del tentative_existing_map
-        current_model_existing_map = actual_existing_map #{reversed.get(k): v for k, v in tentative_existing_map.items() if reversed.get(k) is not None }
+        group_existing_map = actual_existing_map #{reversed.get(k): v for k, v in tentative_existing_map.items() if reversed.get(k) is not None }
         
     else:
-        referenced_models = action.get("fk_map").values()
-        current_model_existing_map = make_existing_map(action["name"], chromosome)
+ #       if model == "snvs":
+#            print("")
+        referenced_models = model_action.get("fk_map").values()
+        group_existing_map = make_existing_map(model)
         for m in referenced_models:
 
-            depends_on_maps[m] = make_existing_map(m,chromosome)
+            depends_on_maps[m] = make_existing_map(m)
     for key in depends_on_maps.keys():
-        log_output(f"    depends-on map {key} has: {len(depends_on_maps[key])} items")
-    log_output(f"    existing map {model} has: {len(current_model_existing_map)} items")
+        log_output(f"    depends-on map {key} {group_label} has: {len(depends_on_maps[key])} items")
+    log_output(f"    existing map {model} {group_label} has: {len(group_existing_map)} items")
+    
+    if model == "transcripts":
+        log_output("adding to the existing transcripts map")
+        
+        transcripts_existing_map.update( group_existing_map ) # save for later to save time
+    return group_existing_map
 
 
 #    log_output(f"done populating maps for {action['name']} chromosome {chromosome}")
@@ -190,6 +208,7 @@ def append_to_map(modelName, key, value):
 
 
 def persist_and_unload_maps():
+    global depends_on_maps
     depends_on_maps.clear()
 
 
@@ -206,7 +225,7 @@ def get_table(model):
         return Table(table_name, metadata, autoload_with=engine)
 
 def import_file(file, file_info, action):
-    global current_chromosome,last_chromosome
+#    global current_chromosome,last_chromosome
     model = action.get("name")
     fk_map = action.get("fk_map")
     filters = action.get("filters") or {}
@@ -214,100 +233,153 @@ def import_file(file, file_info, action):
     file_now = datetime.now()
     
     table = get_table(model)
-    
-
-    # break up file into chunks
-    # for each chunk, 
-    #   make the existing map and depends on maps
-    #   make the insert list and update list
-    # pass to publish)group
-        
     action_types = action.get("tsv_types" ,{})
-
     df = readTSV(file, file_info, dtype=action_types)
     
     missingRefCount = 0
     duplicateCount = 0
     successCount = 0
     
-    data_insert_list = []
-    data_update_list = []
-    for _, row in df.iterrows():
-        data = row.to_dict()
-        
-        if (model in ["variants","transcripts"]):
-            data["assembly"] = set_var_assembly
-        
-        if separate_cache_by_chromosome(action):
-        
-            current_chromosome = data.get("variant",data.get("variant_id")).split("_")[0]
-            if current_chromosome != last_chromosome:
-                last_chromosome = current_chromosome
-                persist_and_unload_maps()
-                populate_maps(action, current_chromosome)
-
-        skip = False
-        record_map_key = action.get("tsv_map_key_expression")(data)
-        for col, filter in filters.items():
-            data[col] = filter(data[col])
-        for depended_model_col, depended_model in fk_map.items():
-            depended_map_key = None
-            fk = None
-            
-            if model in ["variants_annotations", "variants_consequences"]:
-                depended_map_key = (data["variant"], data["transcript"])
-            else:
-                
-                if isinstance(data[depended_model_col], str):
-                    depended_map_key = data[depended_model_col]
-            if depended_map_key == "NA":
-                
-                    data[depended_model_col] = None
-            elif depended_map_key is None:
-                fk = None
-            else:
-                fk = depends_on_maps.get(depended_model).get( depended_map_key)
-                
-            if fk is not None:
-                data[depended_model_col] = fk
-            else:
-                if depended_model_col in action.get("null_ok", []) and data[depended_model_col] is None:
-                    pass
-                else:
-                    log_data_issue(
-                        f"Missing {depended_model_col} {depended_map_key} in {depended_model}",
-                        model,
-                    )
-                    log_data_issue(data, model)
-                    missingRefCount += 1
-                    skip = True
-        if skip:
-            continue
-
-        if record_map_key is None:
-            print(f"record_map_key is None for {model} {data}")
-            log_error(f"record_map_key is None for {model} {data}")
-            quit()
-        existing_id = current_model_existing_map.get(record_map_key)
-        if existing_id is not None:
-            # record is already in the DB
-            if update:
-                data["id"] = existing_id
-                data_update_list.append(data)
-            else:
-                duplicateCount += 1
-                successCount += 1
-                continue
-        else:
-            # the record is NOT in the db, so add it
-            data_insert_list.append(data)
-
-    # dispose of df to save ram
-    del df
+    subgroups = [{"df":df, "group_label":"all"}]
     
+    now_subgroups = datetime.now()
+    if model in ["variants_annotations", "variants_consequences"]:
+        
+        print("making subgroups for model ", model)
+        subgroups = []
+        for chromosome in [ str(i) for i in list(range(1,22)) + ["X", "Y", "chrM"] ]:
+            # for most ram-heavy models - further subdivide by last nucleotide (alt) of variant 
+            # (or - for some mito variant deletions)
+            for nucleotide in ["A","T","G","C","-"]:
+                
+                if nucleotide == "-" and chromosome != "chrM":
+                    continue
+                group_df = df[df.apply(lambda row: row["variant"].split("_")[0] == chromosome and row["variant"][-1] == nucleotide, axis=1)]
+                group_label = f"chr:{chromosome}, alt {nucleotide}" 
+            
+                subgroups.append(
+                    {"df":group_df, 
+                    "group_label":group_label, 
+                    "variant_prefix":f"{chromosome}_",
+                    "variant_ends_with":nucleotide
+                    })
+                
+        
+        del df
+
+
+    elif separate_cache_by_chromosome(action):
+        # group by chromosome only
+        print("making subgroups for model ", model)
+        subgroups = []
+        for chromosome in [ str(i) for i in list(range(1,22)) + ["X", "Y", "chrM"] ]:
+            if model == "variants":
+                group_df = df[df.apply(lambda row: row["variant_id"].split("_")[0] == chromosome, axis=1)]
+            else:
+                group_df = df[df.apply(lambda row: row["variant"].split("_")[0] == chromosome, axis=1)]
+            group_label = f"{chromosome}" 
+            
+            subgroups.append(
+                {"df":group_df, 
+                 "group_label":group_label, 
+                 "variant_prefix":f"{chromosome}_"
+                 })
+        del df
+    log_output(f"making subgroups took {str(datetime.now() - now_subgroups)}")
+    counts = {}
+
+    for subgroup in subgroups:
+        
+        data_insert_list = []
+        data_update_list = []
+        group_label = subgroup["group_label"]
+        df = subgroup["df"]
+        variant_prefix_or_none = subgroup.get("variant_prefix")
+        variant_alt_or_none = subgroup.get("variant_ends_with")
+        existing_map = {}
+        
+        if df.empty:
+            continue
+        
+        if model != "severities":
+            persist_and_unload_maps()
+            existing_map = populate_maps(action, group_label, variant_prefix_or_none, variant_alt_or_none)
+        
+        for _, row in df.iterrows():
+            data = row.to_dict()
+            
+            if (model in ["variants","transcripts"]):
+                data["assembly"] = set_var_assembly
+
+            skip = False
+            record_map_key = action.get("tsv_map_key_expression")(data)
+            for col, filter in filters.items():
+                data[col] = filter(data[col])
+            for depended_model_col, depended_model in fk_map.items():
+                depended_map_key = None
+                fk = None
+                
+                if model in ["variants_annotations", "variants_consequences"]:
+                    depended_map_key = (data["variant"], data["transcript"])
+                else:
+                    
+                    if isinstance(data[depended_model_col], str):
+                        depended_map_key = data[depended_model_col]
+                if depended_map_key == "NA":
+                    
+                        data[depended_model_col] = None
+                elif depended_map_key is None:
+                    fk = None
+                else:
+                    fk = depends_on_maps.get(depended_model).get( depended_map_key)
+                    
+                if fk is not None:
+                    data[depended_model_col] = fk
+                else:
+                    if depended_model_col in action.get("null_ok", []) and data[depended_model_col] is None:
+                        pass
+                    else:
+                        log_data_issue(
+                            f"Missing {depended_model_col} {depended_map_key} in {depended_model}",
+                            model,
+                        )
+                        log_data_issue(data, model)
+                        missingRefCount += 1
+                        skip = True
+            if skip:
+                continue
+
+            if record_map_key is None:
+                print(f"record_map_key is None for {model} {data}")
+                log_error(f"record_map_key is None for {model} {data}")
+                quit()
+            existing_id = existing_map.get(record_map_key)
+            if existing_id is not None:
+                # record is already in the DB
+                if update:
+                    data["id"] = existing_id
+                    data_update_list.append(data)
+                else:
+                    duplicateCount += 1
+                    successCount += 1
+                    continue
+            else:
+                # the record is NOT in the db, so add it
+                data_insert_list.append(data)
+
+        # dispose to save ram
+        del existing_map
+        del subgroup            
+        
+        group_counts = publish_group(data_insert_list, data_update_list, engine, model, table)
+        for key in group_counts.keys():
+            if key not in counts:
+                counts[key] = 0
+            counts[key] += group_counts[key]
+    
+    del subgroups
     log_output(f"    {str(datetime.now() - file_now)}")
     
-    counts = publish_group(data_insert_list, data_update_list, engine, model, table)
     
     counts["missingRef"] = missingRefCount
     counts["duplicate"] = counts["duplicate"] + duplicateCount
@@ -337,7 +409,7 @@ def start(db_engine):
 
     arrived_at_start_model = False
     arrived_at_start_file = False
-    global engine, schema, current_chromosome, last_chromosome
+    global engine, schema
     engine = db_engine
 
     if isinstance(schema, str) and len(schema) > 0:
@@ -439,10 +511,6 @@ def start(db_engine):
                     )
                     continue
             
-            if separate_cache_by_chromosome(action_info):
-                pass #populate maps instead happens per 1 chromosome
-            else:
-                populate_maps(action_info)
             modelNow = datetime.now()
 
             if large_model_file_tsv_exists:
@@ -516,8 +584,6 @@ def start(db_engine):
                 + ". Took this much time: "
                 + str(datetime.now() - modelNow)
             )
-            current_chromosome = None
-            last_chromosome = None
             report_counts(model_counts)
             this_model_index = list(model_import_actions.keys()).index(modelName)
             if this_model_index + 1 < len(model_import_actions.keys()):
