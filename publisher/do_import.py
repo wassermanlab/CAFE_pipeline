@@ -63,7 +63,7 @@ transcripts_existing_map = {}
 def separate_cache_by_chromosome(action):
     return action["name"] not in ["transcripts","genes", "severities"]
 
-@profile
+#@profile
 def populate_maps(model_action, group_label="all", variant_prefix=None, variant_suffix=None):
     print("populating maps", group_label)
     global depends_on_maps, transcripts_existing_map
@@ -224,7 +224,7 @@ def get_table(model):
     else:
         return Table(table_name, metadata, autoload_with=engine)
 
-@profile
+#@profile
 def import_file(file, file_info, action):
 #    global current_chromosome,last_chromosome
     model = action.get("name")
@@ -418,7 +418,7 @@ def start(db_engine):
     else:
         metadata.reflect(bind=engine)
 
-    job_dir = get_job_dir()
+    job_dir = get_job_dir(schema, set_var_assembly, dry_run, rootDir.split("/")[-1])
     os.makedirs(job_dir, exist_ok=True)
     os.chmod(job_dir, 0o777)  # Set read and write permissions for the directory
     setup_loggers(job_dir)
