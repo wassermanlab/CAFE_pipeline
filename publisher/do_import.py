@@ -60,6 +60,7 @@ metadata = MetaData()
 depends_on_maps = {}
 transcripts_existing_map = {}
 
+@profile
 def separate_cache_by_chromosome(action):
     return action["name"] not in ["transcripts","genes", "severities"]
 
@@ -224,6 +225,7 @@ def get_table(model):
     else:
         return Table(table_name, metadata, autoload_with=engine)
 
+@profile
 def import_file(file, file_info, action):
 #    global current_chromosome,last_chromosome
     model = action.get("name")
