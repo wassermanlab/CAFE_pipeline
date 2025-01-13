@@ -60,11 +60,10 @@ metadata = MetaData()
 depends_on_maps = {}
 transcripts_existing_map = {}
 
-@profile
 def separate_cache_by_chromosome(action):
     return action["name"] not in ["transcripts","genes", "severities"]
 
-
+@profile
 def populate_maps(model_action, group_label="all", variant_prefix=None, variant_suffix=None):
     print("populating maps", group_label)
     global depends_on_maps, transcripts_existing_map
