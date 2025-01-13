@@ -21,13 +21,14 @@ fail_fast = os.environ.get("FAIL_FAST") == "true" or os.environ.get("FAIL_FAST")
 verbose = os.environ.get("VERBOSE") == "true" or os.environ.get("VERBOSE") == "True"
 print('verbose is', verbose)
 
-def get_job_dir( db_name, assembly, dry_run, tsv_dir):
+def get_job_dir( db_name, assembly, dry_run, tsv_dir, start_at_model, start_at_file):
         
     current_dir = os.path.dirname(os.path.realpath(__file__))
     jobs_dir = os.path.abspath(os.path.join(current_dir, "jobs"))    
     
     date_yyyy_mm_dd = datetime.now().strftime("%Y-%m-%d")
-    desired_job_dir_name = f"{date_yyyy_mm_dd}-{tsv_dir}-v{assembly}-into-{db_name}{'-dryrun' if dry_run else ''}_1";
+    start_at_info = f"{'-'+start_at_model if start_at_model else '' }{'-'+start_at_file+'-' if start_at_file else ''}"
+    desired_job_dir_name = f"{date_yyyy_mm_dd}-{tsv_dir}-v{assembly}-into-{db_name}{start_at_info}{'-dryrun' if dry_run else ''}_1";
     
     if os.path.exists(os.path.join(jobs_dir, desired_job_dir_name)):
         dir_exists = True

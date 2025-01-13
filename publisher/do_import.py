@@ -418,7 +418,7 @@ def start(db_engine):
     else:
         metadata.reflect(bind=engine)
 
-    job_dir = get_job_dir(schema, set_var_assembly, dry_run, rootDir.split("/")[-1])
+    job_dir = get_job_dir(schema, set_var_assembly, dry_run, rootDir.split("/")[-1], start_at_model, start_at_file)
     os.makedirs(job_dir, exist_ok=True)
     os.chmod(job_dir, 0o777)  # Set read and write permissions for the directory
     setup_loggers(job_dir)
