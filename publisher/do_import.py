@@ -182,26 +182,6 @@ def populate_maps(model_action, group_label="all", variant_prefix=None, variant_
     
     return group_existing_map
 
-
-#    log_output(f"done populating maps for {action['name']} chromosome {chromosome}")
-#    existing_json = json.dumps(current_model_existing_map)
-#    existing_dependson_json = json.dumps(depends_on_maps)
-#    log_output(f"existing map for {action['name']} chromosome {chromosome}: {existing_json}")
-#    log_output(f"depends on maps for {action['name']} chromosome {chromosome}: {existing_dependson_json}")
-
-#    except FileNotFoundError:
-#        pk_maps[modelName] = {}
-#        pass
-
-
-def append_to_map(modelName, key, value):
-    global depends_on_maps
-    if modelName not in depends_on_maps:
-        log_error(f"trying to append to map but was not populated ({modelName} {key} {value})")
-    if key not in depends_on_maps[modelName]:
-        depends_on_maps[modelName][key] = value
-
-
 def persist_and_unload_maps():
     global depends_on_maps, transcripts_map
     if "transcripts" in depends_on_maps and len(depends_on_maps["transcripts"]) > 0:
