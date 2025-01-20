@@ -1,5 +1,6 @@
 import pandas as pd
 import argparse
+import os
 
 def process_tsv(input_file, output_file):
     df = pd.read_csv(input_file, sep='\t')
@@ -13,6 +14,7 @@ def process_tsv(input_file, output_file):
 
 
     def custom_quality_aggregation(series):
+        print("aggregating",series)
         # Stub function: picks the greater quality number
         return series.max()
 
@@ -21,12 +23,17 @@ def process_tsv(input_file, output_file):
 
 def main():
     parser = argparse.ArgumentParser(description='Produce consolidated duplicated rows from TSV file.')
-    parser.add_argument('input_file', type=str, help='Path to the input TSV file')
-    parser.add_argument('output_file', type=str, help='Path to the output TSV file')
+    parser.add_argument('input_dir', type=str, help='Path to the dir containing input TSV files')
+    parser.add_argument('output_dir', type=str, help='Path to the output dir')
 
     args = parser.parse_args()
-
-    process_tsv(args.input_file, args.output_file)
+    
+    files_in_dir = os.listdir(args.input_dir)
+    for file in files_in_dir:
+        if file.endswith(".tsv"):
+            input_file = os.path.join(args.input_dir, file)
+            output_file = os.path.join(args.output_dir, file)
+            process_tsv(input_file, output_file)
 
 if __name__ == '__main__':
     main()
