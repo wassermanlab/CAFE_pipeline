@@ -75,7 +75,7 @@ def main():
     for file in files_in_dir:
         if file.endswith(".tsv"):
             input_file = os.path.join(args.input_dir, file)
-            output_file = os.path.join(args.output_dir, file)
+            output_file = os.path.join(args.output_dir, f"0_indelpatch_{file}")
             process_tsv(input_file, output_file)
     print("done creating patch TSVs. Number of rows:", num_processed)
     print("this is how many dupe indels had same allele count:", same_count)
