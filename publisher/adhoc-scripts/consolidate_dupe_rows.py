@@ -21,8 +21,10 @@ freq_types =         {
             'hom_xy': int,
             'quality': float
         }
-
+num_processed = 0
+same_count = 0
 def process_tsv(input_file,output_file):
+    global same_count, num_processed
     print("processing file", input_file)
     df = pd.read_csv(input_file, sep='\t')
     df.replace('.', 0.00000, inplace=True)
@@ -47,13 +49,18 @@ def process_tsv(input_file,output_file):
         new_row["variant"] = group_name
         new_row.update(group[columns_to_sum].sum())
         new_row["quality"] = group.loc[group["ac_tot"].idxmax()]["quality"]
+        if group["ac_tot"].nunique() == 1:
+#            print("identical ac tot in group", group)
+            new_row["quality"] = group["quality"].max()
+            same_count += 1
         new_rows.append(new_row)
+        num_processed += 1
 #        new_df = pd.concat([new_df,new_row], ignore_index=True)
  
     if (len(new_rows) > 0):
         
         new_df = pd.DataFrame(new_rows).astype(freq_types) 
-        print("new new", new_df)
+#        print("new new", new_df)
     
         new_df.to_csv(output_file, sep='\t', index=False)
 
@@ -70,6 +77,8 @@ def main():
             input_file = os.path.join(args.input_dir, file)
             output_file = os.path.join(args.output_dir, file)
             process_tsv(input_file, output_file)
+    print("done creating patch TSVs. Number of rows:", num_processed)
+    print("this is how many dupe indels had same allele count:", same_count)
 
 if __name__ == '__main__':
     main()
