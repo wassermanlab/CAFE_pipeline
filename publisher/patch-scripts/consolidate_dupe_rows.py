@@ -25,7 +25,7 @@ num_processed = 0
 same_count = 0
 diffmax_count = 0
 def process_tsv(input_file,output_file):
-    global same_count, num_processed
+    global same_count, num_processed, diffmax_count
     print("processing file", input_file)
     df = pd.read_csv(input_file, sep='\t', dtype=freq_types, na_values=['.'])
     df.replace('.', 0.00000, inplace=True)
