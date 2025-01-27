@@ -23,17 +23,18 @@ freq_types =         {
         }
 num_processed = 0
 same_count = 0
+diffmax_count = 0
 def process_tsv(input_file,output_file):
     global same_count, num_processed
     print("processing file", input_file)
-    df = pd.read_csv(input_file, sep='\t')
+    df = pd.read_csv(input_file, sep='\t', dtype=freq_types, na_values=['.'])
     df.replace('.', 0.00000, inplace=True)
     df = df.astype(freq_types)
     
     duplicates = df[df.duplicated(subset=["variant"], keep=False)]
     df_duplicates = df[df["variant"].isin(duplicates["variant"])]
     
-    columns_to_sum = [col for col in df_duplicates.columns if col not in ["quality"] and pd.api.types.is_numeric_dtype(df_duplicates[col])]
+    columns_to_sum = [col for col in df_duplicates.columns if col not in ["quality", "an_tot","an_xx","an_xy"] and pd.api.types.is_numeric_dtype(df_duplicates[col])]
     grouped = df_duplicates.groupby("variant")
     
     new_rows = []
@@ -48,6 +49,16 @@ def process_tsv(input_file,output_file):
         new_row = {}
         new_row["variant"] = group_name
         new_row.update(group[columns_to_sum].sum())
+        an_tot_max = group["an_tot"].idxmax()
+        an_xx_max = group["an_xx"].idxmax()
+        an_xy_max = group["an_xy"].idxmax()
+        if an_tot_max == an_xx_max and an_xx_max == an_xy_max:
+            new_row["an_tot"] = group.loc[an_tot_max]["an_tot"]
+            new_row["an_xx"] = group.loc[an_xx_max]["an_xx"]
+            new_row["an_xy"] = group.loc[an_xy_max]["an_xy"]
+        else:
+            diffmax_count += 1
+            
         new_row["quality"] = group.loc[group["ac_tot"].idxmax()]["quality"]
         if group["ac_tot"].nunique() == 1:
 #            print("identical ac tot in group", group)
@@ -79,6 +90,7 @@ def main():
             process_tsv(input_file, output_file)
     print("done creating patch TSVs. Number of rows:", num_processed)
     print("this is how many dupe indels had same allele count:", same_count)
+    print("this is how many dupe indels had max allele numbers from differing copies:", diffmax_count)
 
 if __name__ == '__main__':
     main()
