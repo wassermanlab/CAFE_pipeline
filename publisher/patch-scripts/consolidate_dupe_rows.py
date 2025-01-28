@@ -71,11 +71,17 @@ def process_tsv(input_file,output_file):
  
     if (len(new_rows) > 0):
         
-        new_df = pd.DataFrame(new_rows).astype(freq_types) 
+        try:
+            new_df = pd.DataFrame(new_rows).astype(freq_types) 
+        except:
+            print("unable to make dataframe from", new_rows)
+            raise
 #        print("new new", new_df)
     
         new_df.to_csv(output_file, sep='\t', index=False)
         print("done:", output_file)
+    else:
+        print("no duplicates found in", input_file)
 def main():
     parser = argparse.ArgumentParser(description='Produce consolidated duplicated rows from TSV file.')
     parser.add_argument('--input_dir', type=str, help='Path to the dir containing input TSV files', default='.')
