@@ -67,6 +67,11 @@ def process_tsv(input_file,output_file):
             same_count += 1
         new_rows.append(new_row)
         num_processed += 1
+        try:
+            test_df = pd.DataFrame(new_rows).astype(freq_types)
+        except:
+            print("unable to make dataframe from", new_rows)
+            raise
 #        new_df = pd.concat([new_df,new_row], ignore_index=True)
  
     if (len(new_rows) > 0):
