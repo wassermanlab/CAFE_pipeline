@@ -60,19 +60,37 @@ def process_tsv(input_file,output_file):
         
         new_row = {}
         new_row["variant"] = group_name
-        new_row.update(group[columns_to_sum].sum())
-        an_tot_max = group["an_tot"].idxmax()
-        an_xx_max = group["an_xx"].idxmax()
-        an_xy_max = group["an_xy"].idxmax()
-        if an_tot_max == an_xx_max and an_xx_max == an_xy_max:
+        new_row.update(group[['af_tot', 'af_xx', 'af_xy', 'ac_tot', 'ac_xx', 'ac_xy']].sum())
+        
+        indexes_w_max_an_tot = group[group["an_tot"] == group["an_tot"].max()].index
+        indexes_w_max_an_xx = group[group["an_xx"] == group["an_xx"].max()].index
+        indexes_w_max_an_xy = group[group["an_xy"] == group["an_xy"].max()].index
+        
+        an_tot_winner = len(indexes_w_max_an_tot) == 1
+        an_xx_winner = len(indexes_w_max_an_xx) == 1
+        an_xy_winner = len(indexes_w_max_an_xy) == 1
+        
+        an_tot_max_idx = group["an_tot"].idxmax()
+        an_xx_max_idx = group["an_xx"].idxmax()
+        an_xy_max_idx = group["an_xy"].idxmax()
+        
+#        if an_tot_winner and an_xx_winner and an_xy_winner and an_tot_max_idx == an_xx_max_idx and an_xx_max_idx == an_xy_max_idx:
+        if an_tot_max_idx == an_xx_max_idx and an_xx_max_idx == an_xy_max_idx:
             pass
         else:
-            diffmax_count += 1
-            print("different max an_tot, an_xx, an_xy in group", group)
+            an_tot_is_tied = group["an_tot"].nunique() == 1
+            an_xx_is_tied = group["an_xx"].nunique() == 1
+            an_xy_is_tied = group["an_xy"].nunique() == 1
+            diffmax_count += 1 # counting how many times we see two rows with different max an values
+            
+            # note: above WIP is to handle case when the row with max tied with another row
+#            print("different max an_tot, an_xx, an_xy in group", group)
         
-        new_row["an_tot"] = group.loc[an_tot_max]["an_tot"]
-        new_row["an_xx"] = group.loc[an_xx_max]["an_xx"]
-        new_row["an_xy"] = group.loc[an_xy_max]["an_xy"]
+        new_row["an_tot"] = group.loc[an_tot_max_idx]["an_tot"]
+        new_row["an_xx"] = group.loc[an_xx_max_idx]["an_xx"]
+        new_row["an_xy"] = group.loc[an_xy_max_idx]["an_xy"]
+    
+        new_row.update(group[['hom_tot', 'hom_xx', 'hom_xy']].sum())
             
         new_row["quality"] = group.loc[group["ac_tot"].idxmax()]["quality"]
         if group["ac_tot"].nunique() == 1:
@@ -81,12 +99,11 @@ def process_tsv(input_file,output_file):
             same_count += 1
         new_rows.append(new_row)
         num_processed += 1
-        try:
-            test_df = pd.DataFrame([new_row]).astype(freq_types)
-        except:
-            print("new row fails to enter", new_row)
-            raise
-#        new_df = pd.concat([new_df,new_row], ignore_index=True)
+#        try: -- uncomment if you want to see what rows are failing to enter
+#            test_df = pd.DataFrame([new_row]).astype(freq_types)
+#        except:
+#            print("new row fails to enter", new_row)
+#            raise
  
     if (len(new_rows) > 0):
         
