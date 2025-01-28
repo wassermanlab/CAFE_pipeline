@@ -28,7 +28,8 @@ def process_tsv(input_file,output_file):
     global same_count, num_processed, diffmax_count
     print("processing file", input_file)
     df = pd.read_csv(input_file, sep='\t', dtype=freq_types, na_values=['.'])
-    df.replace('.', 0.00000, inplace=True)
+#    df = pd.read_csv(input_file, sep='\t')
+#    df.replace('.', 0.00000, inplace=True)
     df = df.astype(freq_types)
     
     duplicates = df[df.duplicated(subset=["variant"], keep=False)]
@@ -74,17 +75,16 @@ def process_tsv(input_file,output_file):
 #        print("new new", new_df)
     
         new_df.to_csv(output_file, sep='\t', index=False)
-
+        print("done:", output_file)
 def main():
     parser = argparse.ArgumentParser(description='Produce consolidated duplicated rows from TSV file.')
-    parser.add_argument('input_dir', type=str, help='Path to the dir containing input TSV files')
-    parser.add_argument('output_dir', type=str, help='Path to the output dir')
+    parser.add_argument('--input_dir', type=str, help='Path to the dir containing input TSV files', default='.')
+    parser.add_argument('--output_dir', type=str, help='Path to the output dir', default='./out')
 
     args = parser.parse_args()
-    
     files_in_dir = os.listdir(args.input_dir)
     for file in files_in_dir:
-        if file.endswith(".tsv"):
+        if file.endswith(".tsv") and not file.startswith("0_indelpatch_"):
             input_file = os.path.join(args.input_dir, file)
             output_file = os.path.join(args.output_dir, f"0_indelpatch_{file}")
             process_tsv(input_file, output_file)
