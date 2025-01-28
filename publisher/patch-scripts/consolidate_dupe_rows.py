@@ -54,11 +54,14 @@ def process_tsv(input_file,output_file):
         an_xx_max = group["an_xx"].idxmax()
         an_xy_max = group["an_xy"].idxmax()
         if an_tot_max == an_xx_max and an_xx_max == an_xy_max:
-            new_row["an_tot"] = group.loc[an_tot_max]["an_tot"]
-            new_row["an_xx"] = group.loc[an_xx_max]["an_xx"]
-            new_row["an_xy"] = group.loc[an_xy_max]["an_xy"]
+            pass
         else:
             diffmax_count += 1
+            print("different max an_tot, an_xx, an_xy in group", group)
+        
+        new_row["an_tot"] = group.loc[an_tot_max]["an_tot"]
+        new_row["an_xx"] = group.loc[an_xx_max]["an_xx"]
+        new_row["an_xy"] = group.loc[an_xy_max]["an_xy"]
             
         new_row["quality"] = group.loc[group["ac_tot"].idxmax()]["quality"]
         if group["ac_tot"].nunique() == 1:
@@ -68,9 +71,9 @@ def process_tsv(input_file,output_file):
         new_rows.append(new_row)
         num_processed += 1
         try:
-            test_df = pd.DataFrame(new_rows).astype(freq_types)
+            test_df = pd.DataFrame([new_row]).astype(freq_types)
         except:
-            print("unable to make dataframe from", new_rows)
+            print("new row fails to enter", new_row)
             raise
 #        new_df = pd.concat([new_df,new_row], ignore_index=True)
  
