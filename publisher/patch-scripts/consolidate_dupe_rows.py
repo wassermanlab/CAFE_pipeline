@@ -24,8 +24,12 @@ freq_types =         {
 num_processed = 0
 same_count = 0
 diffmax_count = 0
+num_triplets = 0
+num_quad = 0
+num_5groups = 0
+
 def process_tsv(input_file,output_file):
-    global same_count, num_processed, diffmax_count
+    global same_count, num_processed, diffmax_count, num_triplets, num_quad, num_5groups
     print("processing file", input_file)
     df = pd.read_csv(input_file, sep='\t', dtype=freq_types, na_values=['.'])
 #    df = pd.read_csv(input_file, sep='\t')
@@ -47,6 +51,13 @@ def process_tsv(input_file,output_file):
 #        print("idx with highest ac_tot", group["ac_tot"].idxmax())
 #        print("group quality with highest ac_tot", group.loc[group["ac_tot"].idxmax()]["quality"])
 #        print("summed", group[columns_to_sum].sum())
+        if len(group) == 3:
+            num_triplets += 1
+        elif len(group) == 4:
+            num_quad += 1
+        elif len(group) == 5:
+            num_5groups += 1
+        
         new_row = {}
         new_row["variant"] = group_name
         new_row.update(group[columns_to_sum].sum())
@@ -105,6 +116,10 @@ def main():
     print("done creating patch TSVs. Number of rows:", num_processed)
     print("this is how many dupe indels had same allele count:", same_count)
     print("this is how many dupe indels had max allele numbers from differing copies:", diffmax_count)
+    print("this is how many triplets:", num_triplets)
+    print("this is how many quadruplets:", num_quad)
+    print("this is how many quintuplets:", num_5groups)
+
 
 if __name__ == '__main__':
     main()
