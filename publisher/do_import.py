@@ -471,10 +471,6 @@ def start(db_engine):
                 arrived_at_start_model = True
             
             log_output(f"*** import {modelName} ***")
-            with engine.connect() as connection:
-                table = get_table(modelName)
-                num_rows = connection.execute(select(func.count()).select_from(table)).scalar()
-                db_row_counts["before"][modelName] = num_rows
 
             ######### added in v2. handles case when the pipeline output directory
             # is not a directory of directories of tsv files (ie, per chromosome), but a single directory of tsv files,
@@ -499,6 +495,11 @@ def start(db_engine):
                 sorted_files = natsorted(
                     [f for f in os.listdir(model_directory) if not f.startswith(".")],
                 )
+            
+            with engine.connect() as connection:
+                table = get_table(modelName)
+                num_rows = connection.execute(select(func.count()).select_from(table)).scalar()
+                db_row_counts["before"][modelName] = num_rows
 
             for file in sorted_files:
                 if file.endswith(".tsv"):
