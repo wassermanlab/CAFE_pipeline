@@ -361,8 +361,8 @@ def import_file(file, file_info, action):
     
     
     counts["missingRef"] = missingRefCount
-    counts["duplicate"] = counts["duplicate"] + duplicateCount
-    counts["success"] = counts["success"] + successCount
+    counts["duplicate"] = counts.get("duplicate",0) + duplicateCount
+    counts["success"] = counts.get("success",0) + successCount
     counts["rowcount"] = file_info["total_rows"]
     
     return counts
