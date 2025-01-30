@@ -554,6 +554,8 @@ def start(db_engine):
                         "fail_chunks",
                         "rowcount"
                     ]:
+                        if key not in results:
+                            results[key] = 0
                         model_counts[key] += results.get(key, 0)
                         counts[key] += results.get(key, 0)
 
