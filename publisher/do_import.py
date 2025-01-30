@@ -538,7 +538,7 @@ def start(db_engine):
                         file_info,
                         action_info,
                     )
-                    if results["success"] == 0:
+                    if results["success"] == 0 and results["fail"] > 0:
                         log_output("No rows were imported.")
                         cleanup(None, None)
 
