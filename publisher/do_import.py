@@ -538,8 +538,8 @@ def start(db_engine):
                         file_info,
                         action_info,
                     )
-                    if results["success"] == 0 and results["fail"] > 0:
-                        log_output("No rows were imported.")
+                    if results.get("success",0) == 0 and results.get("fail",0) > 0:
+                        log_output("No rows were imported, bailing to avoid further failures")
                         cleanup(None, None)
 
                     for key in [
@@ -553,8 +553,8 @@ def start(db_engine):
                         "fail_chunks",
                         "rowcount"
                     ]:
-                        model_counts[key] += results[key]
-                        counts[key] += results[key]
+                        model_counts[key] += results.get(key)
+                        counts[key] += results.get(key)
 
                     report_counts(results)
 
