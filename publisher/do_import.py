@@ -554,8 +554,8 @@ def start(db_engine):
                         "fail_chunks",
                         "rowcount"
                     ]:
-                        model_counts[key] += results.get(key)
-                        counts[key] += results.get(key)
+                        model_counts[key] += results.get(key, 0)
+                        counts[key] += results.get(key, 0)
 
                     report_counts(results)
 
